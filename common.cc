@@ -14,7 +14,7 @@ int char_to_card_num(char ch) {
     // returns 0-12 or -1
     int n;
     switch (ch) {
-    case 'A':
+    case 'A': case '1':
         n = 1; break;
     case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9':
         n = (ch - '0'); break;
@@ -90,7 +90,7 @@ Card read_card(FILE *fp) {
     while (true) {
         int ch = fgetc(fp);
         if (ch == EOF || ch == '\n') return -1;
-        if (ch <= ' ' || ch == '1') continue;
+        if (ch <= ' ') continue;
         num = char_to_card_num(ch);
         if (num == -1) return -1;
         break;

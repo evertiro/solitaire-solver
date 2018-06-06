@@ -18,11 +18,13 @@ def _scan_border(gen):
     borders = []
     for i, (r, g, b) in enumerate(gen):
         if (r + g + b) > 650:
-            if bright != i-1: borders.append((True, i))
+            if bright != i - 1:
+                borders.append((True, i))
             bright = i
             dark = -1
         else:
-            if dark != i-1: borders.append((False, i))
+            if dark != i - 1:
+                borders.append((False, i))
             bright = -1
             dark = i
     return borders
@@ -32,7 +34,7 @@ def _render(borders):
     _tmp = []
     bright_from = -1
     for onoff, i in borders:
-        if onoff == True:
+        if onoff:
             bright_from = i
         else:
             _tmp.append((bright_from, i))
@@ -44,14 +46,14 @@ def scan_border_vert(im, x):
     width, height = im.size
 
     borders = _scan_border(im.getpixel((x, y)) for y in range(height))
-    _render( borders )
+    _render(borders)
 
 
 def scan_border_horiz(im, y):
     width, height = im.size
 
     borders = _scan_border(im.getpixel((x, y)) for x in range(width))
-    _render( borders )
+    _render(borders)
 
 
 def check_is_red(im, left, top, right, bottom):
@@ -79,9 +81,9 @@ def scan_image(pix, left, top, right, bottom, step=2):
         row = []
         for x in range(left, right, step):
             r, g, b = pix[x, y]
-#            avg = float(r + g + b) / 3 / 256  # [0.0, 1.9)
-#            avg = math.sqrt(avg)
-#            c = int(avg * scale)
+            #            avg = float(r + g + b) / 3 / 256  # [0.0, 1.9)
+            #            avg = math.sqrt(avg)
+            #            c = int(avg * scale)
             if r >= 128 and g >= 128 and b >= 128:  # white
                 c = 1
             else:  # red/black
@@ -93,8 +95,10 @@ def scan_image(pix, left, top, right, bottom, step=2):
     return np.array(_X)
 
 
-pix_mode = True # 0.452
+pix_mode = True  # 0.452
+
 # pix_mode = False # 0.513
+
 
 def scan_freecell_image(image_path, step=2):
     assert os.path.exists(image_path)
@@ -113,14 +117,14 @@ def scan_freecell_image(image_path, step=2):
 
     num_processed = 0
     for r in range(7):
-        top = 338 + 35*r
+        top = 338 + 35 * r
         bottom = top + 35
 
         row = []
         for c in range(8 if r < 6 else 4):
-            left = 24 + 90*c  # 24, 114, ..., 654 (-96)
+            left = 24 + 90 * c  # 24, 114, ..., 654 (-96)
             right = left + 72  # 96, 186, ..., 726 (-24)
-            middle = (left + right) / 2
+            middle = int((left + right) / 2)
             # scan_border_vert(im, left + 3)
             # print((c, r))
             img_left = scan_image(pix, left, top, middle, bottom, step)
@@ -140,15 +144,19 @@ def visualize(X):
     for y in range(H):
         for x in range(W):
             c = X[y][x]
-            sys.stdout.write(".*"[c])
+            sys.stdout.write(".*" [c])
         sys.stdout.write('\n')
     sys.stdout.write('\n')
 
 
 @click.command()
-@click.argument('image-path', type=click.Path(exists=True, readable=True), default='freecell_snapshots/game_8758887.png')
+@click.argument(
+    'image-path',
+    type=click.Path(exists=True, readable=True),
+    default='freecell_snapshots/game_8758887.png')
 # @click.argument('scale', type=int, default=2)
-@click.argument('step', type=int, default=2)
+@click.argument(
+    'step', type=int, default=2)
 def main(image_path, step):
     def flatten_2d(mx):
         return np.array([item for row in mx for item in row])

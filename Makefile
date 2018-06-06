@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -O2 -Wc++11-extensions
+CXXFLAGS = -O2
 
 all: TriPeaksSolver FreeCellSolver PyramidSolver KlondikeSolver
 

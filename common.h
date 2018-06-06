@@ -73,7 +73,7 @@ inline std::string _full(Card card) {
     return ss.str();
 }
 
-inline std::string _full_cards(std::vector<Card> cards, char *delim=" ") {
+inline std::string _full_cards(std::vector<Card> cards, const char *delim=" ") {
     std::stringstream ss;
     int L = cards.size();
     for (int i=0; i<L; ++i) {

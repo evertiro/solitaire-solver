@@ -4,7 +4,8 @@
 #include <cstring>
 #include <cmath>
 #include <queue>
-//#include <algorithm>
+#include <algorithm>
+
 using namespace std;
 
 #include "common.h"

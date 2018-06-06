@@ -23,7 +23,7 @@ def flatten_2d(mx):
 
 def one_dim(a):
     M, H, W = a.shape
-    return a.reshape((M, H*W))
+    return a.reshape((M, H * W))
 
 
 def one_of_k(n, k):
@@ -45,6 +45,7 @@ class data_X:
     def data(self):
         a = np.array(self._Xs)
         return one_dim(a)
+
 
 class data_y:
     def __init__(self, k, ys=[]):
@@ -98,18 +99,30 @@ class Model:
             nb_epoch = 100
             callbacks = []
             patience = 10
-            early_stopping = EarlyStopping(monitor='val_acc', mode='max', patience=patience)
+            early_stopping = EarlyStopping(
+                monitor='val_acc', mode='max', patience=patience)
             callbacks.append(early_stopping)
 
             input_dim = len(Xs[0])
             nb_classes = len(ys[0])
 
             model = Sequential()
-            model.add(Dense(nb_classes, input_dim=input_dim, init='normal', activation='sigmoid'))
+            model.add(
+                Dense(
+                    nb_classes, input_dim=input_dim, init='normal',
+                    activation='sigmoid'))
             # model.add(Dense(nb_classes, init='normal', activation='sigmoid'))
-            model.compile(loss='categorical_crossentropy', optimizer='rmsprop', metrics=['accuracy'])
+            model.compile(
+                loss='categorical_crossentropy',
+                optimizer='rmsprop',
+                metrics=['accuracy'])
 
-            hist = model.fit([Xs], [ys], nb_epoch=nb_epoch, verbose=2, validation_split=0.25, callbacks=callbacks)
+            hist = model.fit(
+                [Xs], [ys],
+                nb_epoch=nb_epoch,
+                verbose=2,
+                validation_split=0.25,
+                callbacks=callbacks)
             # save model
             return model
 
@@ -137,16 +150,18 @@ class Model:
         def _load_model(model_name):
             model_json_path = 'model_data/%s_model.json' % model_name
             param_hdf5_path = 'model_data/%s_param.hdf5' % model_name
-            if not os.path.isdir('model_data') \
-                or not os.path.exists(model_json_path) \
-                or not os.path.exists(param_hdf5_path):
+            if (not os.path.isdir('model_data') or not os.path.exists(model_json_path)
+                    or not os.path.exists(param_hdf5_path)):
                 raise Exception('model data not found')
 
             with open(model_json_path, 'r') as fp:
                 json_string = fp.read()
-                model =  model_from_json(json_string)
+                model = model_from_json(json_string)
 
-            model.compile(loss='categorical_crossentropy', optimizer='rmsprop', metrics=['accuracy'])
+            model.compile(
+                loss='categorical_crossentropy',
+                optimizer='rmsprop',
+                metrics=['accuracy'])
             model.load_weights(param_hdf5_path)
 
             return model
@@ -188,6 +203,7 @@ def cli():
 
 snapshot_dir_path = 'freecell_snapshots'
 
+
 @cli.command()
 def build():
     _Xs, _ys = [], []
@@ -199,7 +215,7 @@ def build():
             image_path = snapshot_dir_path + '/' + name
             teacher_path = re.sub(r'\.png$', '.teacher', image_path)
             if os.path.exists(teacher_path):
-                _Xs += scan_freecell_image(image_path, step=2) # 5ぐらいでも行けたけど
+                _Xs += scan_freecell_image(image_path, step=2)  # 5ぐらいでも行けたけど
                 _ys += parse(teacher_path)
                 sys.stdout.write('[%s]' % name[:-4])
                 sys.stdout.flush()

@@ -4,12 +4,21 @@
 #include <string>
 #include <map>
 #include <cstdio>
+#include <algorithm>
+
 using namespace std;
 
 #include "common.h"
 #include "cout11.h"
 
 typedef long long ll;
+
+enum
+{
+    E_UNKNOWN = 0,
+    E_NO_SOLVED = 1,
+    E_SOLVED = 2,
+};
 
 vector<int> pyramid, deck;
 map<int, int> m_okmask;
@@ -58,8 +67,15 @@ int okmask(int mask) {
 int is_next[14][14];
 bool solved = false;
 
-map<ll, int> m_solve_visited;
-map<ll, vector<ll> > before;
+map<ll, int> m_flag_key;
+
+map<ll, ll> m_solve_key;
+map<ll, int> m_solve_next_combo;
+map<ll, int> m_solve_next_score;
+
+map<ll, ll> m_no_solve_key;
+map<ll, int> m_no_solve_next_combo;
+map<ll, int> m_no_solve_next_score;
 
 void init() {
     for (int i=0; i<13; ++i) {
@@ -81,7 +97,7 @@ void render_key(ll key, int& head, int& st, int& mask) {
 }
 
 char buf[3];
-int T = 0;
+ll T = 0;
 
 string _loc(int loc) {
 /* a:    0     1     2
@@ -102,86 +118,178 @@ string _loc(int loc) {
   return ss.str();
 }
 
-int solve(int head=deck[0], int st=1, int mask=0) {
+int bonus(int i, int mask) {
+    if (i < 25) return 0;
+    int count = ((mask & (1 << 25)) > 0) + ((mask & (1 << 26)) > 0) + ((mask & (1 << 27)) > 0);
+    int r = (count == 0) * 5 + (count == 1) * 10 + (count == 2) * 50;
+    return r;
+}
+
+void trace() {
+    if (++T % 1000000 == 0) {
+        printf("cycle: %lld, flag_size:%d\r", T, m_flag_key.size());
+        fflush(stdout);
+    }
+}
+
+int solve(int& solve_next_combo, int& solve_next_score, int& no_solve_next_combo, int& no_solve_next_score, int head=deck[0], int st=1, int mask=0) {
+    trace();
     ll key = _key(head, st, mask);
-    if (solved) return -1;
-    if (m_solve_visited.find(key) != m_solve_visited.end()) {
-        // printf("// already visited (%d,%d)\n", st, mask);
-        return m_solve_visited[key];
+    bool is_debug = false;
+    //bool is_debug = (key == 0x176de7efff);
+    if (m_flag_key.count(key) > 0)
+    {
+        solve_next_combo = m_solve_next_combo[key];
+        solve_next_score = m_solve_next_score[key];
+        no_solve_next_combo = m_no_solve_next_combo[key];
+        no_solve_next_score = m_no_solve_next_score[key];
+        return m_flag_key[key];
     }
 
     if (mask == FULL) {
-        printf("%d <solved>\n", T);
-        vector<ll> iter;
-        iter.push_back(key);
-        while (true) {
-            if (before[key].size() == 0) break;
-            key = before[key][0];
-            iter.push_back(key);
-        }
-        reverse(all(iter));
-        for (int i=0; i<iter.size()-1; ++i) {
-            printf("%d) ", 1+i);
-            ll key_b = iter[i], key_a = iter[i+1];
-            int head_b, st_b, mask_b, head_a, st_a, mask_a;
-            render_key(key_b, head_b, st_b, mask_b);
-            render_key(key_a, head_a, st_a, mask_a);
-//                printf("- (%c %d %07x) -> (%c %d %07x) : ",
-//                    num_single[head_b], st_b, mask_b, num_single[head_a], st_a, mask_a);
-            if (st_a == st_b) {
-                int maskdiff = mask_a - mask_b;
-                int loc = __builtin_ctz(maskdiff);
-                cout << "from pyramid " << _loc(loc) << " (" << num_single[pyramid[loc]] << ")" << endl;
-            } else {
-                cout << "turn deck (" << num_single[deck[st_b]] << ")" << endl;
-            }
-        }
         solved = true;
-        m_solve_visited[key] = 1;
-        return 1;
+        //trace();
+        return E_SOLVED;
     }
     else if (st == 24) {
-        // printf("not solved. (%07x)\n", mask);
-        m_solve_visited[key] = 0;
-        return 0;
+        //trace();
+        return E_NO_SOLVED;
     }
 
     int ok = okmask(mask);
 
-    /// printf("SOLVE(head=%d, st=%d, mask=%07x) : ok=%07x\n", 1+head, st, mask, ok);
-
-    bool possible = false;
+    int r = 0;
+    ll _solve_key = 0;
+    int _solve_next_combo = 0;
+    int _solve_next_score = 0;
+    ll _no_solve_key = 0;
+    int _no_solve_next_combo = 0;
+    int _no_solve_next_score = 0;
+    
+    //No.1 try pyramid
     for (int i=0; i<28; ++i) {
         int m = 1 << i;
-        if (m & mask) continue; // もう引いたやつ
+        if (m & mask) continue;
         if (i >= 10 && (ok & m) == 0) continue;
-        // if (((mask >> ok_base[i]) & 3) < 3) continue;
         int card = pyramid[i];
         if (!is_next[head][card]) continue;
-        // printf("  can draw %d at %d\n", 1+card, i);
 
-        possible = true;
-        // これを引く場合
-        int next_mask = mask | (1 << i);
-        before[_key(card, st, next_mask)].push_back(key);
-        /// printf("drawing %c at %d...\n", num_single[card], i);
-        /// putchar(num_single[card]);
-        int r = solve(card, st, mask | (1 << i));
-        if (r) return 1;
+        int next_mask = mask | m;
+        
+        int __solve_next_combo = 0;
+        int __solve_next_score = 0;
+        int __no_solve_next_combo = 0;
+        int __no_solve_next_score = 0;
+        r |= solve(__solve_next_combo, __solve_next_score, __no_solve_next_combo, __no_solve_next_score, card, st, next_mask);
+        if (is_debug) {
+            printf("<1> r: %08x\n", r);
+            printf("<1> __solve_next_combo: %d\n", __solve_next_combo);
+            printf("<1> __solve_next_score: %d\n", __solve_next_score);
+            printf("<1> __no_solve_next_combo: %d\n", __no_solve_next_combo);
+            printf("<1> __no_solve_next_score: %d\n", __no_solve_next_score);
+        }
+        if (r & E_SOLVED) {
+            __solve_next_score += 1 + __solve_next_combo * 2 + bonus(i, mask);
+        }
+        if (__solve_next_score > _solve_next_score) {
+            _solve_key = _key(card, st, next_mask);
+            _solve_next_combo = __solve_next_combo+1;
+            _solve_next_score = __solve_next_score;
+        }
+        if (r & E_NO_SOLVED) {
+            __no_solve_next_score += 1 + __no_solve_next_combo * 2 + bonus(i, mask);
+        }
+        if (__no_solve_next_score > _no_solve_next_score) {
+            _no_solve_key = _key(card, st, next_mask);
+            _no_solve_next_combo = __no_solve_next_combo+1;
+            _no_solve_next_score = __no_solve_next_score;
+        }
     }
-    // 引かずにただめくるだけ
-    if (!possible) {
-      /// printf("no drawable card...");
+    
+    //No.2 try deck
+    int __solve_next_combo = 0;
+    int __solve_next_score = 0;
+    int __no_solve_next_combo = 0;
+    int __no_solve_next_score = 0;
+    r |= solve(__solve_next_combo, __solve_next_score, __no_solve_next_combo, __no_solve_next_score, deck[st], st+1, mask);
+    if (is_debug) {
+        printf("<2> r: %08x\n", r);
+        printf("<2> __solve_next_combo: %d\n", __solve_next_combo);
+        printf("<2> __solve_next_score: %d\n", __solve_next_score);
+        printf("<2> __no_solve_next_combo: %d\n", __no_solve_next_combo);
+        printf("<2> __no_solve_next_score: %d\n", __no_solve_next_score);
     }
-    /// printf("go next...\n");
-    /// putchar('\r');
-    if (++T % 100000 == 0) {
-      printf("%d\r", T);
-      /// putchar('.');
-      fflush(stdout);
+    if (__solve_next_score > _solve_next_score) {
+        _solve_key = _key(deck[st], st+1, mask);
+        _solve_next_combo = 0;
+        _solve_next_score = __solve_next_score;
     }
-    before[_key(deck[st], st+1, mask)].push_back(key);
-    return solve(deck[st], st+1, mask);
+    if (__no_solve_next_score > _no_solve_next_score) {
+        _no_solve_key = _key(deck[st], st+1, mask);
+        _no_solve_next_combo = 0;
+        _no_solve_next_score = __no_solve_next_score;
+    }
+    
+    m_solve_key[key] = _solve_key;
+    m_solve_next_combo[key] = _solve_next_combo;
+    m_solve_next_score[key] = _solve_next_score;
+    m_no_solve_key[key] = _no_solve_key;
+    m_no_solve_next_combo[key] = _no_solve_next_combo;
+    m_no_solve_next_score[key] = _no_solve_next_score;
+
+    solve_next_combo += m_solve_next_combo[key];
+    solve_next_score = m_solve_next_score[key];
+    no_solve_next_combo += m_no_solve_next_combo[key];
+    no_solve_next_score = m_no_solve_next_score[key];
+    
+    m_flag_key[key] = r;
+    return r;
+}
+
+void print_best_move(bool solved, int best_score)
+{
+    map<ll, ll> m_key = solved ? m_solve_key : m_no_solve_key;
+    map<ll, int> m_next_combo = solved ? m_solve_next_combo : m_no_solve_next_combo;
+    map<ll, int> m_next_score = solved ? m_solve_next_score : m_no_solve_next_score;
+    ll key = _key(deck[0], 1, 0);
+    int i = 0;
+    printf("%s\n",std::string(50,'=').c_str());
+    while (key)
+    {
+        printf("%d) ", 1+i);
+        ll next_key = m_key[key];
+        if (!next_key) {
+            printf("key: %llx\n", key);
+            printf("m_next_combo[key]: %d\n", m_next_combo[key]);
+            printf("m_next_score[key]: %d\n", m_next_score[key]);
+            break;
+        }
+        int head, st, mask, next_head, next_st, next_mask;
+        render_key(key, head, st, mask);
+        render_key(next_key, next_head, next_st, next_mask);
+        if (st == next_st) {
+            int maskdiff = mask - next_mask;
+            int loc = __builtin_ctz(maskdiff);
+            cout << "from pyramid " << _loc(loc) << " (" << num_single[pyramid[loc]] << ")";
+            if (m_next_combo[key] == 1) {
+                cout << " combo(" << m_next_combo[key] << ")"<< " score(" << (best_score - m_next_score[key] + 1) * 100 << ")";
+            } else {
+                cout << " combo(" << m_next_combo[key] << ")";
+            }
+        } else {
+            cout << "turn deck (" << num_single[deck[st]] << ")";
+        }
+        cout << endl;
+        
+        key = next_key;
+        i++;
+    }
+    if (solved) {
+        cout << "<solved> score(" << best_score * 100 << ")" << endl;
+    } else {
+        cout << "<not solved> score(" << best_score * 100 << ")" << endl;
+    }
+    printf("%s\n",std::string(50,'=').c_str());
 }
 
 void usage() {
@@ -209,11 +317,13 @@ int main(int argc, char **argv) {
 
         int c = char_to_card_num(ch);
         if (c < 0) continue;
-
+        
+        //printf("%d ", c);
         tmp.push_back(c);
     }
+    //printf("\n");
     if (tmp.size() != 52) {
-        printf("invalid data.\n");
+        printf("invalid data: %d != 52\n", tmp.size());
         return 0;
     }
 
@@ -255,7 +365,18 @@ int main(int argc, char **argv) {
         }
     }
 
-    solve();
+    int solve_next_combo = 0;
+    int solve_next_score = 0;
+    int no_solve_next_combo = 0;
+    int no_solve_next_score = 0;
+    solve(solve_next_combo, solve_next_score, no_solve_next_combo, no_solve_next_score);
+    printf("cycle: %lld, flag_size:%d\n", T, m_flag_key.size());
+    printf("solved: %s\n", solved ? "yes" : "no");
+    printf("solve_next_score: %d\n", solve_next_score * 100);
+    printf("no_solve_next_score: %d\n", no_solve_next_score * 100);
+    print_best_move(solved, solved ? solve_next_score : no_solve_next_score);
+    if (solved)
+        print_best_move(false, no_solve_next_score);
 
     fclose(fp);
     return 0;

@@ -17,6 +17,8 @@
 #include <cstring>
 #include <sstream>
 #include <queue>
+#include <algorithm>
+
 using namespace std;
 
 #undef NDEBUG
@@ -34,6 +36,11 @@ using namespace std;
 #define WORKSPACE NUM_LINES
 #define GOAL      NUM_LINES+1
 
+bool option_best = false;
+int option_max_count = 0;
+int option_max_prefer_card_num = -1;
+int option_max_prefer_card_suite = -1;
+bool option_verbose = false;
 
 char *rtrim(char *buf) {
     char *p = buf;
@@ -42,7 +49,7 @@ char *rtrim(char *buf) {
     return buf;
 }
 
-#if 0
+#if 1
 void check_consistency(vector<vector<Card> >& _board, int line) {
     assert(_board.size() == 2 + NUM_LINES);
 
@@ -105,8 +112,8 @@ bool load__board(vector<vector<Card> >& _board, char *path) {
     _board.push_back(vector<Card>(NUM_WORKSPACES, VACANT));
     _board.push_back(vector<Card>(NUM_SUITES, VACANT));
 
-    // assert(num_cards == 52);
-    // check_consistency(_board, 114);
+    assert(num_cards == 52);
+    check_consistency(_board, 114);
 
     return true;
 }
@@ -190,12 +197,31 @@ void board_pp(vector<vector<Card> >& _board, bool full=false) {
     }
 }
 
-priority_queue<pair<pair<int, int>, string> > _pq;
+struct cmp{
+    bool operator() ( pair<pair<int, int>, string> a, pair<pair<int, int>, string> b )
+    {
+        int a_score = a.first.first;
+        int a_distance = -a.first.second;
+        int b_score = b.first.first;
+        int b_distance = -b.first.second;
+        int ratio_score = 2;
+        int ratio_distance = 1;
+        
+        if (option_best) {
+            return (a_score * ratio_score - a_distance * ratio_distance) < (b_score * ratio_score - b_distance * ratio_distance);
+        } else {
+            return (a_score < b_score) || (a_score == b_score && -a_distance < -b_distance);
+        }
+    }
+};
+
+priority_queue<pair<pair<int, int>, string>, vector<pair<pair<int, int>, string> >, cmp> _pq;
 set<string> _visited;
 map<string, pair<int, string> > _last_step;
 vector<vector<Card> > _board;
 
 void queue_nextstep(string& curr, int curr_distance, int next_score) {
+    //if (option_max_count != 0 and option_max_count <= curr_distance ) return;
     string next = board_serialize(_board);
     // cout << "queuing " << curr << " -> " << next << endl;
     if (!found(next, _visited)) {
@@ -389,7 +415,7 @@ void route_back(vector<vector<Card> >& initial_board, string& here) {
 //            cout << "  "; board_pp(b0);
         }
         // cout << "  ";
-        board_pp(b1);
+        if (option_verbose) board_pp(b1);
 
         b0 = b1;
     }
@@ -414,8 +440,8 @@ string solve(string& intial_board_serialized) {
 
         if (max_score < _score) {
             for (int i=max_score; i<_score; ++i) {
-                putchar('#');
-                fflush(stdout);
+                //putchar('#');
+                //fflush(stdout);
             }
             max_score = _score;
         }
@@ -428,12 +454,7 @@ string solve(string& intial_board_serialized) {
 
         board_deserialize(_board, here);
         // cout << _board << endl;
-/*
-        if (step % 2000 == 0) {
-            printf("step=%d distance=%d) ", step, distance);
-            board_pp(_board);
-        }
-*/
+
         // check_consistency(_board, 193);
 
         int max_movable = 1;
@@ -441,10 +462,27 @@ string solve(string& intial_board_serialized) {
         rep(l, NUM_LINES) if (_board[l].size() == 0) ++max_movable;
 
         int score = 0;
-        rep(s, NUM_SUITES) score += card_num(_board[GOAL][s]);
-        if (score == 48) {
+        int score_goal = (option_max_prefer_card_num == -1) ? 12 : option_max_prefer_card_num;
+        if (option_max_prefer_card_suite == -1)
+        {
+            rep(s, NUM_SUITES) score += (card_num(_board[GOAL][s]) < option_max_prefer_card_num) ? card_num(_board[GOAL][s]) : option_max_prefer_card_num;
+        }
+        else
+        {
+            score = card_num(_board[GOAL][option_max_prefer_card_suite]);
+        }
+        score_goal = (option_max_prefer_card_suite == -1) ? score_goal * 4 : score_goal;
+        if (score >= score_goal && (option_max_count == 0 || option_max_count >= distance)) {
+            printf("*** SOLVED ***\n");
+            printf("step=%d score=%d score_goal=%d distance=%d) ", step, score, score_goal, distance);
+            board_pp(_board);
             printf("\n"); // SOLVED.
             return here;
+        }
+
+        if (step % 2000 == 0) {
+            printf("step=%d score=%d score_goal=%d distance=%d) ", step, score, score_goal, distance);
+            board_pp(_board);
         }
 
         // line#l -> Goal, WS, other line
@@ -578,18 +616,59 @@ string solve(string& intial_board_serialized) {
     return "";
 }
 
+#include <unistd.h>
+
 void usage() {
-    printf("usage: Klondike_solver_2 <game-file>\n");
+    printf("usage: FreeCellSolver [-b] [-c count] [-p card] [-v] <game-file>\n");
     exit(0);
 }
 
 int main(int argc, char **argv) {
-    if (argc < 2) {
+    int opt;
+    while ((opt = getopt(argc, argv, "bc:p:v")) != -1) {
+        switch (opt) {
+        case 'b':  // best move (try find minimal count)
+            option_best = true;
+            printf("寻找最优解模式\n");
+            break;
+        case 'c':  // max count
+            option_max_count = atoi(optarg);
+            printf("最大步数是%d\n", option_max_count);
+            break;
+        case 'p':  // preference
+            {
+                int tmp_offset = strlen(optarg) - 1;
+                int tmp_num = char_to_card_num(*(char*)optarg);
+                int tmp_suite = char_to_card_suite(*((char*)optarg+tmp_offset));
+                if (tmp_num > -1)
+                {
+                    option_max_prefer_card_num = tmp_num;
+                    printf("目标牌数是%c\n", num_single[option_max_prefer_card_num]);
+                }
+                if (tmp_suite > -1)
+                {
+                    option_max_prefer_card_suite = tmp_suite;
+                    printf("目标牌型是%c\n", suite_single[option_max_prefer_card_suite]);
+                }
+            }
+            break;
+        case 'v':  // verbose
+            option_verbose = true;
+            printf("详细模式\n");
+            break;
+        default:
+            usage();
+            return 0;
+        }
+    }
+
+    if (optind == argc) {
         usage();
         return 0;
     }
-    char *path = argv[1];
 
+    char *path = argv[optind];
+    
     vector<vector<Card> > initial_board;
     if (!load__board(initial_board, path)) {
         printf("invalid data file.\n");

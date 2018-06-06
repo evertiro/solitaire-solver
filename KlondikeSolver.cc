@@ -2,6 +2,8 @@
 #include <string>
 #include <sstream>
 #include <queue>
+#include <algorithm>
+
 using namespace std;
 
 #include "common.h"
@@ -23,6 +25,10 @@ set<string> _visited;
 map<string, pair<int, string> > _last_step;
 vector<vector<Card> > _board;
 */
+
+bool option_best = false;
+bool option_single_turn = false;
+bool option_verbose = false;
 
 inline char num_serialize(int n) {
     // printf("num_serialize(n=%d)\n", n);
@@ -207,12 +213,16 @@ class Board {
 
     int turn() {
         ++deck_ofs;
+        int last_ofs=-1;
         for (int turned=0, m=1<<deck_ofs; deck_ofs<24; ++deck_ofs,m<<=1) {
-            if (deck_mask & m) ++turned;
-            if (turned == 3) break;
+            if (deck_mask & m) {
+                ++turned;
+                last_ofs=deck_ofs;
+            }
+            if (turned == (option_single_turn ? 1 : 3)) break;
         }
         if (deck_ofs == 24) {
-            deck_ofs = -1;
+            deck_ofs = last_ofs;
         }
         refresh(true);
         return deck_ofs;
@@ -270,14 +280,31 @@ public:
     string serialized;
 };
 
+struct cmp{
+    bool operator() ( pair<int, pair<pair<int, int>, string> > a, pair<int, pair<pair<int, int>, string> > b )
+    {
+        int a_score = a.first;
+        int a_distance = -a.second.first.first;
+        int b_score = b.first;
+        int b_distance = -b.second.first.first;
+        int ratio_score = 2;
+        int ratio_distance = 1;
+        
+        if (option_best) {
+            return (a_score * ratio_score - a_distance * ratio_distance) < (b_score * ratio_score - b_distance * ratio_distance);
+        } else {
+            return (a_score < b_score) || (a_score == b_score && -a_distance < -b_distance);
+        }
+    }
+};
 
-priority_queue<pair<int, pair<int, string> > > _pq;
+priority_queue<pair<int, pair<pair<int, int>, string> >, vector<pair<int, pair<pair<int, int>, string> > >, cmp > _pq;
 set<string> _visited;
 map<string, pair<int, string> > _best;
 
-inline void add_to_queue(Board *board, int curr_step, string current) {
+inline void add_to_queue(Board *board, int curr_step, int curr_big_turn, string current) {
     if (!found(board->serialized, _visited)) {
-        _pq.push(make_pair(board->score, make_pair(-(curr_step+1), board->serialized)));
+        _pq.push(make_pair(board->score, make_pair(make_pair(-(curr_step + 1), curr_big_turn), board->serialized)));
 
         if (found(board->serialized, _best)) {
             if (_best[board->serialized].first > curr_step) {
@@ -325,6 +352,7 @@ void show_solution(Board *board, vector<vector<Card> >& initial_lines, string& c
     vector<vector<Card> > last_lines(all(initial_lines));
     int last_ofs = -1, last_mask = 0xffffff;
 
+    int big_turn = 0;
     for (int i=0; i<history.size(); ++i) {
         board->deserialize(history[i]);
 
@@ -396,7 +424,8 @@ void show_solution(Board *board, vector<vector<Card> >& initial_lines, string& c
         }
 
         // show
-        _show(1+i, curr_lines_2, board->goal);
+        if (board->deck_mask == last_mask && board->deck_ofs != last_ofs && board->deck_ofs == -1) ++big_turn;
+        _show(1+i-big_turn, curr_lines_2, board->goal);
 
         bool turned = false;
         if (board->deck_mask != last_mask) {
@@ -466,10 +495,11 @@ int solve(vector<vector<Card> >& initial_lines, vector<Card>& initial_deck) {
     board->dump();
 #endif
 
-    add_to_queue(board, 0, "");
+    add_to_queue(board, 0, 0, "");
 
+    int iter_count = 0;
     while (!_pq.empty()) {
-        int score = _pq.top().first, step = -_pq.top().second.first;
+        int score = _pq.top().first, step = -_pq.top().second.first.first, big_turn = _pq.top().second.first.second;
         int next_step = step + 1;
         string current = _pq.top().second.second;
         _pq.pop();
@@ -481,14 +511,20 @@ int solve(vector<vector<Card> >& initial_lines, vector<Card>& initial_deck) {
 #ifdef DEBUG
         // cout << endl;
         // cout << score << " " << step << ") " << board->dump() << endl;
-        putchar('\r');
-        for (int i=0; i<score; ++i) putchar('#');
-        fflush(stdout);
+        //putchar('\r');
+        //for (int i=0; i<score; ++i) putchar('#');
+        //fflush(stdout);
 #endif
         if (board->score == 13*4) {
-            cout << "\rSOLVED." << endl;
+            cout << "*** SOLVED ***" << endl;
+            cout << "count: " << iter_count << " score: " << board->score << " steps: " << step-1 << " big_turns: " << big_turn << endl;
             show_solution(board, initial_lines, current);
             break;
+        }
+        
+        ++iter_count;
+        if (option_verbose && iter_count % 2000 == 0) {
+            cout << "count: " << iter_count << " score: " << board->score << " steps: " << step-1 << " big_turns: " << big_turn << endl;
         }
 
         // cout << "1"; board->debug();
@@ -557,7 +593,7 @@ int solve(vector<vector<Card> >& initial_lines, vector<Card>& initial_deck) {
                     cout << "(" << _full(c) << ") on L" << to << "." << orig_to_len << "(" << _full(ct) << ")" << endl;
 #endif
                     board->refresh(true);
-                    add_to_queue(board, step, current);
+                    add_to_queue(board, step, big_turn, current);
                     // board->deserialize(current);
                     // cout << "@"; board->debug();
 
@@ -598,7 +634,7 @@ int solve(vector<vector<Card> >& initial_lines, vector<Card>& initial_deck) {
                     board->goal[suite] = c;
 
                     board->refresh(true);
-                    add_to_queue(board, step, current);
+                    add_to_queue(board, step, big_turn, current);
                     // board->deserialize(current);
 
                     if (from != -1) {
@@ -615,7 +651,7 @@ int solve(vector<vector<Card> >& initial_lines, vector<Card>& initial_deck) {
             printf("Turn (ofs=%d ->)\n", board->deck_ofs);
 #endif
             board->turn();
-            add_to_queue(board, step, current);
+            add_to_queue(board, step, board->deck_ofs == -1 ? big_turn + 1 : big_turn, current);
             // board->deserialize(current);
         }
 
@@ -626,8 +662,10 @@ int solve(vector<vector<Card> >& initial_lines, vector<Card>& initial_deck) {
     return 0;
 }
 
+#include <unistd.h>
+
 void show_usage() {
-    printf("./KlondikeSolver <game-file>\n");
+    printf("./KlondikeSolver [-b] [-s] [-v] <game-file>\n");
 }
 
 int load(char *path, vector<vector<Card> >& lines, vector<Card>& deck) {
@@ -657,15 +695,35 @@ int load(char *path, vector<vector<Card> >& lines, vector<Card>& deck) {
 }
 
 int main(int argc, char **argv) {
-    if (argc != 2) {
+    int opt;
+    while ((opt = getopt(argc, argv, "bsv")) != -1) {
+        switch (opt) {
+        case 'b':  // best move (try find minimal count)
+            option_best = true;
+            break;
+        case 's':
+            option_single_turn = true;
+            break;
+        case 'v':  // verbose
+            option_verbose = true;
+            break;
+        default:
+            show_usage();
+            return 0;
+        }
+    }
+
+    if (optind == argc) {
         show_usage();
         return 0;
     }
 
+    char *path = argv[optind];
+
     vector<vector<Card> > lines;  // 1+2+3+4+5+6+7=28
     vector<Card> deck;  // 24=8*3
 
-    if (load(argv[1], lines, deck) == -1) {
+    if (load(path, lines, deck) == -1) {
         show_usage();
         return 0;
     }

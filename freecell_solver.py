@@ -26,14 +26,20 @@ def scan(image_path, short_form):
     pred = m.classify(Xs)
 
     if short_form:
-        _pred = ['%s%s' % (class_to_num[1+num][-1], class_to_suite[1+suite]) for num, suite in pred]
+        _pred = [
+            '%s%s' % (class_to_num[1 + num][-1], class_to_suite[1 + suite])
+            for num, suite in pred
+        ]
     else:
-        _pred = ['%s%s' % (class_to_num[1+num], class_to_suite[1+suite]) for num, suite in pred]
+        _pred = [
+            '%s%s' % (class_to_num[1 + num], class_to_suite[1 + suite])
+            for num, suite in pred
+        ]
 
     # save_txt_path = image_path.replace('.png', '.txt')
     # with open(save_txt_path, 'w') as fp:
     for r in range(7):
-        print(' '.join(_pred[r*8 + c] for c in range(8 if r < 6 else 4)))
+        print(' '.join(_pred[r * 8 + c] for c in range(8 if r < 6 else 4)))
 
 
 @cli.command()
@@ -45,19 +51,22 @@ def solve(game_path):
         m = Model()
         m.load()
         pred = m.classify(Xs)
-        _pred = ['%s%s' % (class_to_num[1+num][-1], class_to_suite[1+suite]) for num, suite in pred]
+        _pred = [
+            '%s%s' % (class_to_num[1 + num][-1], class_to_suite[1 + suite])
+            for num, suite in pred
+        ]
 
         save_txt_path = game_path.replace('.png', '.txt')
         with open(save_txt_path, 'w') as fp:
             for r in range(7):
-                row = ' '.join(_pred[r*8 + c] for c in range(8 if r < 6 else 4))
+                row = ' '.join(_pred[r * 8 + c] for c in range(8 if r < 6 else 4))
                 print(row)
                 fp.write(row + '\n')
         game_path = save_txt_path
     else:
         pass
 
-    os.system('./FreeCellSolver %s' % game_path)
+    os.system('FreeCellSolver %s' % game_path)
 
 
 if __name__ == '__main__':
